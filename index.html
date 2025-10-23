@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrabble Очки</title>
+    <!-- Подключение Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Плавный переход для индикатора загрузки */
+        .spinner {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* Стили для выделения активного игрока */
+        .player-active {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+            border-color: #3B82F6;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+
+    <div class="container mx-auto p-4 max-w-2xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 my-4">
+            Трекер очков "Эрудит"
+        </h1>
+
+        <!-- 1. Экран Настройки (Добавление игроков) -->
+        <div id="setupView" class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4">Настройка игры</h2>
+            <div class="flex mb-4">
+                <input type="text" id="playerNameInput" class="w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Имя игрока">
+                <button id="addPlayerButton" class="bg-blue-600 text-white px-4 py-2 rounded-r-md font-semibold hover:bg-blue-700">Добавить</button>
+            </div>
+            
+            <h3 class="text-lg font-medium mb-2">Игроки:</h3>
+            <ul id="playerList" class="list-disc list-inside mb-4 text-gray-700">
+                <!-- Игроки будут добавлены сюда -->
+            </ul>
+
+            <button id="startGameButton" class="w-full bg-green-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-green-700 transition duration-150 ease-in-out disabled:bg-gray-400">
+                Начать игру
+            </button>
+        </div>
+
+        <!-- 2. Экран Игры (Основной процесс) -->
+        <div id="gameView" class="hidden">
+            <!-- Таблица очков -->
+            <div id="scoreboard" class="flex flex-wrap gap-2 justify-center mb-4">
+                <!-- Карточки игроков будут здесь -->
+            </div>
+
+            <!-- Панель управления ходом -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold text-center mb-4">
+                    Ход игрока: <span id="currentPlayerName" class="text-blue-600"></span>
+                </h2>
+
+                <div class="mb-4">
+                    <label for="wordInput" class="block text-sm font-medium text-gray-700 mb-1">
+                        Введите слово:
+                    </label>
+                    <input type="text" id="wordInput" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="например, СЛОВО">
+                </div>
+
+                <!-- Результат проверки слова -->
+                <div id="wordCheckResult" class="mt-4 mb-4 min-h-[2.5rem]"></div>
+                
+                <!-- Кнопки действий -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button id="checkWordButton" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 focus:outline-none flex items-center justify-center">
+                        <span id="checkButtonText">Проверить слово</span>
+                        <div id="checkLoadingSpinner" class="spinner w-5 h-5 border-4 border-t-4 border-gray-200 rounded-full ml-2 hidden"></div>
+                    </button>
+                    
+                    <button id="confirmWordButton" class="w-full bg-green-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-green-700 disabled:bg-gray-400" disabled>
+                        Подтвердить ход
+                    </button>
+                </div>
+                
+                <hr class="my-4">
+                
+                <div class="flex justify-between items-center">
+                    <button id="skipTurnButton" class="text-sm text-gray-600 hover:text-gray-800">
+                        Пропустить ход
+                    </button>
+                    <button id="endGameButton" class="bg-red-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-red-700">
+                        Завершить игру
+                    </button>
+                </div>
+            </div>
+
+            <!-- История ходов -->
+            <div class="mt-6">
+                <h3 class="text-xl font-semibold mb-2 text-gray-700">История ходов:</h3>
+                <div id="historyView" class="bg-white p-4 rounded-lg shadow-inner max-h-48 overflow-y-auto text-sm">
+                    <!-- Записи истории будут здесь -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Экран Завершения Игры -->
+        <div id="endView" class="hidden bg-white p-6 rounded-lg shadow-lg text-center">
+            <h2 class="text-3xl font-bold mb-4 text-blue-600">Игра завершена!</h2>
+            <h3 class="text-xl font-semibold mb-4">Итоговые очки:</h3>
+            <ol id="leaderboard" class="list-decimal list-inside text-left max-w-xs mx-auto text-lg">
+                <!-- Таблица лидеров будет здесь -->
+            </ol>
+            <button id="newGameButton" class="mt-6 w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700">
+                Начать новую игру
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- КОНСТАНТЫ ---
+        const API_KEY = 'dict.1.1.20251023T150423Z.06cb12f9a23a95e8.3b26b3711d64a1921d0adf4f92e6f16a06e3acca';
+        const STORAGE_KEY = 'russianScrabbleGameState';
+        
+        // Распределение очков по буквам
+        const letterScores = {
+            'А': 1, 'Б': 3, 'В': 1, 'Г': 3, 'Д': 2, 'Е': 1, 'Ё': 3, 'Ж': 5,
+            'З': 5, 'И': 1, 'Й': 4, 'К': 2, 'Л': 2, 'М': 2, 'Н': 1, 'О': 1,
+            'П': 2, 'Р': 1, 'С': 1, 'Т': 1, 'У': 2, 'Ф': 10, 'Х': 5, 'Ц': 5,
+            'Ч': 5, 'Ш': 8, 'Щ': 10, 'Ъ': 10, 'Ы': 4, 'Ь': 3, 'Э': 8, 'Ю': 8, 'Я': 3
+        };
+        
+        // Начальное состояние игры
+        const INITIAL_GAME_STATE = {
+            players: [], // { name: 'Игрок 1', score: 0 }
+            currentPlayerIndex: 0,
+            gamePhase: 'setup', // 'setup', 'game', 'end'
+            history: [] // { playerName: 'Игрок 1', word: 'СЛОВО', score: 8 }
+        };
+
+        // --- DOM ЭЛЕМЕНТЫ ---
+        const setupView = document.getElementById('setupView');
+        const gameView = document.getElementById('gameView');
+        const endView = document.getElementById('endView');
+
+        // Настройка
+        const playerNameInput = document.getElementById('playerNameInput');
+        const addPlayerButton = document.getElementById('addPlayerButton');
+        const playerList = document.getElementById('playerList');
+        const startGameButton = document.getElementById('startGameButton');
+
+        // Игра
+        const scoreboard = document.getElementById('scoreboard');
+        const currentPlayerName = document.getElementById('currentPlayerName');
+        const wordInput = document.getElementById('wordInput');
+        const wordCheckResult = document.getElementById('wordCheckResult');
+        const checkWordButton = document.getElementById('checkWordButton');
+        const checkButtonText = document.getElementById('checkButtonText');
+        const checkLoadingSpinner = document.getElementById('checkLoadingSpinner');
+        const confirmWordButton = document.getElementById('confirmWordButton');
+        const skipTurnButton = document.getElementById('skipTurnButton');
+        const endGameButton = document.getElementById('endGameButton');
+        const historyView = document.getElementById('historyView');
+
+        // Конец
+        const leaderboard = document.getElementById('leaderboard');
+        const newGameButton = document.getElementById('newGameButton');
+
+        // --- СОСТОЯНИЕ ИГРЫ ---
+        let gameState;
+
+        // --- ФУНКЦИИ СОСТОЯНИЯ (LocalStorage) ---
+
+        function saveState() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+        }
+
+        function loadState() {
+            const savedState = localStorage.getItem(STORAGE_KEY);
+            if (savedState) {
+                gameState = JSON.parse(savedState);
+            } else {
+                // Используем structuredClone для глубокой копии, чтобы избежать мутации
+                gameState = structuredClone(INITIAL_GAME_STATE);
+            }
+        }
+
+        // --- ОСНОВНАЯ ЛОГИКА ---
+
+        function nextTurn() {
+            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+            wordInput.value = '';
+            wordCheckResult.innerHTML = '';
+            confirmWordButton.disabled = true;
+            render();
+        }
+
+        function calculateScore(word) {
+            // Убираем все, кроме русских букв, и приводим к верхнему регистру
+            const cleanWord = word.toUpperCase().replace(/[^А-ЯЁ]/g, '');
+            let score = 0;
+            for (const letter of cleanWord) {
+                score += letterScores[letter] || 0;
+            }
+            return score;
+        }
+
+        // --- ЛОГИКА API (с CORS Proxy) ---
+        
+        async function checkWordApi(word) {
+            setCheckLoading(true);
+            wordCheckResult.innerHTML = '';
+            confirmWordButton.disabled = true;
+
+            const lang = 'ru-ru';
+            const lookupWord = word.toLowerCase();
+            const yandexUrl = `https://dictionary.yandex.net/api/v1/dicservice.json/lookup?key=${API_KEY}&lang=${lang}&text=${encodeURIComponent(lookupWord)}`;
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yandexUrl)}`;
+
+            try {
+                const response = await fetch(proxyUrl);
+                if (!response.ok) {
+                    // Ошибка прокси или сети
+                    throw new Error(`Ошибка сети (статус: ${response.status})`);
+                }
+
+                const proxyData = await response.json();
+                if (!proxyData.contents) {
+                    // Прокси вернул пустой ответ
+                    throw new Error('Прокси-сервер вернул пустой ответ.');
+                }
+
+                // Пытаемся парсить ответ Яндекса
+                const yandexData = JSON.parse(proxyData.contents);
+
+                if (yandexData.def && yandexData.def.length > 0) {
+                    // Слово найдено
+                    const score = calculateScore(word);
+                    showMessage(`Слово <strong>"${word}"</strong> найдено! Очки: ${score}`, 'success');
+                    confirmWordButton.disabled = false;
+                } else {
+                    // Слово не найдено (API вернул 200 OK, но пустой 'def')
+                    showMessage(`Слово <strong>"${word}"</strong> не найдено в словаре.`, 'error');
+                }
+            } catch (error) {
+                // *** ИСПРАВЛЕНИЕ: Улучшенное сообщение об ошибке ***
+                // Эта ошибка ловится, если:
+                // 1. fetch() падает (нет сети)
+                // 2. response.ok == false (ошибка прокси)
+                // 3. JSON.parse(proxyData.contents) падает (Yandex вернул HTML-ошибку 404, а не JSON)
+                console.error('Ошибка при проверке слова:', error);
+                showMessage(`Слово <strong>"${word}"</strong> не найдено (или произошла ошибка API).`, 'error');
+            } finally {
+                setCheckLoading(false);
+            }
+        }
+
+        // --- ФУНКЦИИ РЕНДЕРИНГА (Отображение UI) ---
+
+        function render() {
+            // 0. Сохраняем любое изменение состояния
+            saveState();
+
+            // 1. Скрываем все "экраны"
+            setupView.classList.add('hidden');
+            gameView.classList.add('hidden');
+            endView.classList.add('hidden');
+
+            // 2. Показываем нужный экран в зависимости от фазы игры
+            if (gameState.gamePhase === 'setup') {
+                setupView.classList.remove('hidden');
+                renderSetup();
+            } else if (gameState.gamePhase === 'game') {
+                gameView.classList.remove('hidden');
+                renderGame();
+            } else if (gameState.gamePhase === 'end') {
+                endView.classList.remove('hidden');
+                renderEnd();
+            }
+        }
+        
+        function renderSetup() {
+            playerList.innerHTML = '';
+            if (gameState.players.length === 0) {
+                playerList.innerHTML = '<li class="text-gray-500">Пока нет игроков...</li>';
+            } else {
+                gameState.players.forEach((player, index) => {
+                    const li = document.createElement('li');
+                    li.textContent = `${index + 1}. ${player.name}`;
+                    playerList.appendChild(li);
+                });
+            }
+            // Кнопка "Начать игру" активна, если есть хотя бы 2 игрока
+            startGameButton.disabled = gameState.players.length < 2;
+        }
+
+        function renderGame() {
+            // Рендер таблицы очков
+            scoreboard.innerHTML = '';
+            gameState.players.forEach((player, index) => {
+                const isActive = index === gameState.currentPlayerIndex;
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-lg border-2 shadow-md bg-white transition-all duration-300 ${isActive ? 'player-active' : 'border-gray-200'}`;
+                card.innerHTML = `
+                    <div class="font-semibold text-gray-800">${player.name}</div>
+                    <div class="text-2xl font-bold ${isActive ? 'text-blue-600' : 'text-gray-600'}">${player.score}</div>
+                `;
+                scoreboard.appendChild(card);
+            });
+
+            // Обновление имени текущего игрока
+            if (gameState.players.length > 0) {
+                currentPlayerName.textContent = gameState.players[gameState.currentPlayerIndex].name;
+            }
+            
+            // Рендер истории
+            historyView.innerHTML = '';
+            if (gameState.history.length === 0) {
+                historyView.innerHTML = '<p class="text-gray-500">Пока нет ходов...</p>';
+            } else {
+                // Показываем ходы в обратном порядке (последний вверху)
+                [...gameState.history].reverse().forEach(move => {
+                    const p = document.createElement('p');
+                    p.className = 'border-b border-gray-200 pb-1 mb-1';
+                    p.innerHTML = `<strong>${move.playerName}</strong>: ${move.word} (+${move.score} ${getPointsString(move.score)})`;
+                    historyView.appendChild(p);
+                });
+                // Автопрокрутка вниз
+                historyView.scrollTop = historyView.scrollHeight;
+            }
+        }
+        
+        function getPointsString(score) {
+            const lastDigit = score % 10;
+            const lastTwoDigits = score % 100;
+            if (lastTwoDigits >= 11 && lastTwoDigits <= 19) return 'очков';
+            if (lastDigit === 1) return 'очко';
+            if (lastDigit >= 2 && lastDigit <= 4) return 'очка';
+            return 'очков';
+        }
+
+        function renderEnd() {
+            // Сортируем игроков по очкам (по убыванию)
+            const sortedPlayers = [...gameState.players].sort((a, b) => b.score - a.score);
+            
+            leaderboard.innerHTML = '';
+            sortedPlayers.forEach((player, index) => {
+                const li = document.createElement('li');
+                li.className = 'mb-2 p-2 rounded';
+                let content = `<strong>${player.name}</strong>: ${player.score} ${getPointsString(player.score)}`;
+                if (index === 0) {
+                    content = `🥇 ${content}`;
+                    li.className += ' bg-yellow-100 text-yellow-800';
+                } else if (index === 1) {
+                    content = `🥈 ${content}`;
+                    li.className += ' bg-gray-200';
+                } else if (index === 2) {
+                    content = `🥉 ${content}`;
+                    li.className += ' bg-orange-100 text-orange-800';
+                }
+                li.innerHTML = content;
+                leaderboard.appendChild(li);
+            });
+        }
+        
+        // --- Вспомогательные функции UI ---
+
+        function setCheckLoading(isLoading) {
+            if (isLoading) {
+                checkButtonText.classList.add('hidden');
+                checkLoadingSpinner.classList.remove('hidden');
+                checkWordButton.disabled = true;
+            } else {
+                checkButtonText.classList.remove('hidden');
+                checkLoadingSpinner.classList.add('hidden');
+                checkWordButton.disabled = false;
+            }
+        }
+
+        function showMessage(message, type = 'error') {
+            const colorClass = type === 'success' ? 'text-green-600' : 'text-red-600';
+            wordCheckResult.innerHTML = `<p class="font-medium ${colorClass}">${message}</p>`;
+        }
+
+        // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
+
+        function handleAddPlayer() {
+            const name = playerNameInput.value.trim();
+            if (name) {
+                gameState.players.push({ name: name, score: 0 });
+                playerNameInput.value = '';
+                render();
+            }
+        }
+
+        function handleStartGame() {
+            if (gameState.players.length >= 2) {
+                gameState.gamePhase = 'game';
+                gameState.currentPlayerIndex = 0;
+                render();
+            }
+        }
+        
+        function handleCheckWord() {
+            const word = wordInput.value.trim();
+            if (word) {
+                checkWordApi(word);
+            } else {
+                showMessage('Введите слово для проверки.', 'error');
+            }
+        }
+        
+        function handleConfirmWord() {
+            const word = wordInput.value.trim();
+            if (word) {
+                const score = calculateScore(word);
+                const player = gameState.players[gameState.currentPlayerIndex];
+                
+                player.score += score;
+                gameState.history.push({
+                    playerName: player.name,
+                    word: word,
+                    score: score
+                });
+                
+                nextTurn(); // Это также вызовет render()
+            }
+        }
+        
+        function handleSkipTurn() {
+            gameState.history.push({
+                playerName: gameState.players[gameState.currentPlayerIndex].name,
+                word: 'пропуск хода',
+                score: 0
+            });
+            nextTurn();
+        }
+        
+        function handleEndGame() {
+            // В задании сказано не использовать confirm(), поэтому просто завершаем.
+            gameState.gamePhase = 'end';
+            render();
+        }
+        
+        function handleNewGame() {
+            // *** ИСПРАВЛЕНИЕ: Сброс состояния без перезагрузки ***
+            localStorage.removeItem(STORAGE_KEY);
+            gameState = structuredClone(INITIAL_GAME_STATE);
+            
+            // Сброс полей ввода вручную
+            playerNameInput.value = '';
+            wordInput.value = '';
+            wordCheckResult.innerHTML = '';
+            
+            render(); // Перерисовываем UI, что вернет нас на 'setupView'
+        }
+
+        // --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ---
+
+        // Привязываем обработчики
+        addPlayerButton.addEventListener('click', handleAddPlayer);
+        playerNameInput.addEventListener('keyup', (e) => e.key === 'Enter' && handleAddPlayer());
+        
+        startGameButton.addEventListener('click', handleStartGame);
+        
+        checkWordButton.addEventListener('click', handleCheckWord);
+        confirmWordButton.addEventListener('click', handleConfirmWord);
+        wordInput.addEventListener('keyup', (e) => e.key === 'Enter' && handleCheckWord());
+        // Сбрасываем проверку, если пользователь меняет слово
+        wordInput.addEventListener('input', () => {
+             confirmWordButton.disabled = true;
+             wordCheckResult.innerHTML = '';
+        });
+
+        skipTurnButton.addEventListener('click', handleSkipTurn);
+        endGameButton.addEventListener('click', handleEndGame);
+        
+        newGameButton.addEventListener('click', handleNewGame);
+
+        // Загружаем состояние и запускаем первый рендер
+        loadState();
+        render();
+
+    </script>
+</body>
+</html>
+
